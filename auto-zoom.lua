@@ -109,6 +109,8 @@
 
 -- string:type              = gma.gethardwaretype()
 
+local GmaCmd = gma.cmd;
+local GmaTimer = gma.timer;
 local GmaShowPropertyAmount = gma.show.property.amount;
 local GmaShowPropertyName = gma.show.property.name;
 local GmaShowPropertyValue = gma.show.property.get;
@@ -122,7 +124,6 @@ local GmaShowGetObjChild = gma.show.getobj.child;
 local GmaShowGetObjAmount = gma.show.getobj.amount;
 local GmaShowGetObjName = gma.show.getobj.name;
 local GmaShowGetObjLabel = gma.show.getobj.label;
-local GmaTimer = gma.timer;
 local GmaShowSetVar = gma.show.setvar;
 local GmaShowGetVar = gma.show.getvar;
 
@@ -135,17 +136,96 @@ local GmaShowGetVar = gma.show.getvar;
 -- It aims to avoid conflicts with other plugins
 AZ = AZ or {}
 
+local PLUGIN_MODE = {
+    PROGRAMMER = 1,
+}
+
 local SETTINGS = {
     PRINT_TO_ECHO = true,
     PRINT_TO_FEEDBACK = true,
+    VERBOSE = true,
     REFRESH_RATE = 30,
+    -- REFRESH_RATE = 1,
+
+    -- User variable to store the enabled state
     ENABLE_VAR = "AUTO_ZOOM_PLUGIN_ENABLED",
+
+    -- User variable to store the current mode
+    MODE_VAR = "AUTO_ZOOM_PLUGIN_MODE",
+
+    -- Enable or disable the use of the Iris for zooming
+    USE_IRIS = true,
 }
 
 local INTERNAL_NAME = select(1, ...);
 local VISIBLE_NAME  = select(2, ...);
 
 local MAIN_MODULE_ID = 1;
+
+-- ------------------------------------------------------------------------------
+-- Variables
+-- ------------------------------------------------------------------------------
+
+-- Set to true when the plugin is initialized with Start()
+local g_initialized = false;
+
+-- Keep if update loop is running
+-- Can be controlled with AZ.Enable() and AZ.Disable()
+local g_enabled = false;
+
+-- Keep track of the current mode for XYZ and zoom tracking
+-- Can be controlled with AZ.SetMode()
+local g_mode = PLUGIN_MODE.PROGRAMMER;
+
+-- Table of fixture with active XYZ tracking
+-- {
+--     [fixture_id] = {
+--         fixture_id = 1,
+--         marker_id = 1001,
+--         beam_size:number = 1, -- in meters
+--     },
+--     ...
+-- },
+local g_fixtures = {};
+
+-- Table of fixture infos, indexed by fixture id
+-- {
+--     [fixture_id] = {
+--        position = {
+--            x = x_position,
+--            y = y_position,
+--            z = z_position,
+--        },
+--        fixture_type_id = fixture_type_id,
+--        fixture_id = fixture_id,
+--     },
+--     ...
+-- }
+local g_fixture_infos = {};
+
+-- Table of fixture types infos, indexed by fixture type id
+-- {
+--     [fixture_type_id] = {
+--         fixture_type_id = 1,
+--         zoom = {
+--             from = 0,
+--             to = 255,
+--             from_phys = 0,
+--             to_phys = 100
+--         },
+--        iris = {
+--            from = 0,
+--            to = 255,
+--            from_phys = 0,
+--            to_phys = 100
+--        },
+--     },
+--     [...] = {
+--         ...
+--         },
+--     },
+-- }
+local g_fixture_types_info = {};
 
 -- ------------------------------------------------------------------------------
 -- Utils
@@ -234,6 +314,49 @@ local function GmaPrintObject(handle)
 
     GmaPrint("-----Properties-----");
     GmaPrintProperties(handle);
+end
+
+local function GetDistanceVector3(a, b)
+    local x = a.x - b.x;
+    local y = a.y - b.y;
+    local z = a.z - b.z;
+    return math.sqrt(x * x + y * y + z * z);
+end
+
+-- Get the angle of a beam with a given distance and radius
+-- The angle is in radians
+local function GetBeamAngle(distance, radius)
+    if distance <= 0 or radius <= 0 then
+        return 0;
+    end
+    return math.atan(radius / distance) * 2;
+end
+
+local function Lerp(a, b, t)
+    return a + (b - a) * t;
+end
+
+local function InvLerp(a, b, v)
+    return (v - a) / (b - a);
+end
+
+local function Remap(value, from1, to1, from2, to2)
+    return Lerp(from2, to2, InvLerp(from1, to1, value));
+end
+
+local function Clamp(value, min, max)
+    if min > max then
+        local tmp = min;
+        min = max;
+        max = tmp;
+    end
+
+    if value < min then
+        return min;
+    elseif value > max then
+        return max;
+    end
+    return value;
 end
 
 -- ------------------------------------------------------------------------------
@@ -689,11 +812,10 @@ function AZ.TestGetAllFixtureInfo()
     GmaPrint("GetAllFixturesPosition takes " .. (end_time - start_time) * 1000 .. " ms");
     for fixture_id, info in pairs(infos) do
         GmaPrint("Fixture " ..
-            fixture_id .. " has position " .. Position2String(info.position) .. ", type id " .. info.fixture_type_id);
+            fixture_id ..
+            " has position " .. Position2String(info.position) .. ", fixturetype id " .. info.fixture_type_id);
     end
 end
-
-local g_fixture_infos = {};
 
 -- Update the fixture positions info cache.
 -- This function should be called when the fixture positions change
@@ -701,8 +823,16 @@ local g_fixture_infos = {};
 --
 -- You can call this function from a macro using the following code:
 -- LUA "UpdateFixturePositionsCache()"
-function AZ.UpdateFixturePositionsInfo()
+function AZ.UpdateFixtureInfo()
     g_fixture_infos = GetAllFixturesInfo();
+    if SETTINGS.VERBOSE then
+        GmaPrint("Fixture positions cache updated");
+        for fixture_id, info in pairs(g_fixture_infos) do
+            GmaPrint("Fixture " ..
+                fixture_id ..
+                " has position " .. Position2String(info.position) .. ", fixturetype id " .. info.fixture_type_id);
+        end
+    end
 end
 
 -- ------------------------------------------------------------------------------
@@ -780,8 +910,15 @@ function AZ.TestGetModuleChannelType()
     end
 end
 
-local function GetChannelFunctionHandle(channel_type_handle, channel_function_id)
-    return GetChildHandle(channel_type_handle, channel_function_id);
+local function GetChannelFunctionHandle(channel_type_handle, channel_function_sub_attrib)
+    local child_amount = GmaShowGetObjAmount(channel_type_handle);
+    for i = 0, child_amount - 1 do
+        local child_handle = GmaShowGetObjChild(channel_type_handle, i);
+        local sub_attrib = GmaShowPropertyValue(child_handle, CHANNELFUNCTION_PROPERTIES.SUBATTRIB);
+        if sub_attrib == channel_function_sub_attrib then
+            return child_handle;
+        end
+    end
 end
 
 -- Get the number value from a physical value.
@@ -804,8 +941,8 @@ local function GetFromToAndPhysFromChannelFunction(channel_function_handle)
     local to_phys_value = GmaShowPropertyValue(channel_function_handle, CHANNELFUNCTION_PROPERTIES.TO_PHYS);
 
     return {
-        from = from_value,
-        to = to_value,
+        from = tonumber(from_value),
+        to = tonumber(to_value),
         from_phys = GetNumberFromPhysValue(from_phys_value),
         to_phys = GetNumberFromPhysValue(to_phys_value)
     };
@@ -818,7 +955,11 @@ local function GetZoomChannelFunctionForModule(module_handle)
         return nil;
     end
 
-    local channel_function_handle = GetChannelFunctionHandle(channel_type_handle, 1);
+    local channel_function_handle = GetChannelFunctionHandle(channel_type_handle, "ZOOM");
+    if channel_function_handle == nil then
+        GmaPrint("Can't find channel function handle for attribute ZOOM");
+        return nil;
+    end
     return GetFromToAndPhysFromChannelFunction(channel_function_handle);
 end
 
@@ -842,15 +983,63 @@ function AZ.TestGetZoomChannelFunctionForFixtureType()
     local fixture = "Fixture 1";
     local fixture_type_id = GetFixtureTypeIdFromFixtureType(GetFixtureType(GmaShowGetObjHandle(fixture)))
     local fixture_type_handle = GetFixtureTypeHandle(fixture_type_id);
-    local fromto_values = GetZoomChannelFunctionForFixtureType(fixture_type_handle);
-    if fromto_values == nil then
+    local zoom = GetZoomChannelFunctionForFixtureType(fixture_type_handle);
+    if zoom == nil then
         GmaPrint("Can't find zoom channel function");
         return;
     end
 
     GmaPrint("Zoom channel function:")
-    GmaPrint("From: " .. fromto_values.from .. " To: " .. fromto_values.to);
-    GmaPrint("From phys: " .. fromto_values.from_phys .. " To phys: " .. fromto_values.to_phys);
+    GmaPrint("From: " .. zoom.from .. " To: " .. zoom.to);
+    GmaPrint("From phys: " .. zoom.from_phys .. " To phys: " .. zoom.to_phys);
+end
+
+local function GetIrisChannelFunctionForModule(module_handle)
+    local channel_type_handle = GetModuleChannelTypeHandle(module_handle, "Iris");
+    if channel_type_handle == nil then
+        GmaPrint("Can't find channel type handle for attribute Iris");
+        return nil;
+    end
+
+    local channel_function_handle = GetChannelFunctionHandle(channel_type_handle, "IRIS");
+    if channel_function_handle == nil then
+        GmaPrint("Can't find channel function handle for attribute IRIS");
+        return nil;
+    end
+    return GetFromToAndPhysFromChannelFunction(channel_function_handle);
+end
+
+local function GetIrisChannelFunctionForFixtureType(fixture_type_handle)
+    local modules_handle = GetFixtureTypeModulesHandle(fixture_type_handle);
+    if modules_handle == nil then
+        GmaPrint("Can't find modules handle");
+        return nil;
+    end
+
+    local module_handle = GetFixtureTypeModuleHandle(modules_handle, MAIN_MODULE_ID);
+    if module_handle == nil then
+        GmaPrint("No main module found");
+        return nil;
+    end
+
+    return GetIrisChannelFunctionForModule(module_handle);
+end
+
+function AZ.TestGetIrisChannelFunctionForFixtureType()
+
+    local fixture = "Fixture 1";
+    local fixture_type_id = GetFixtureTypeIdFromFixtureType(GetFixtureType(GmaShowGetObjHandle(fixture)))
+    local fixture_type_handle = GetFixtureTypeHandle(fixture_type_id);
+    local iris = GetIrisChannelFunctionForFixtureType(fixture_type_handle);
+
+    if iris == nil then
+        GmaPrint("Can't find iris channel function for fixture type " .. fixture_type_id);
+        return;
+    end
+
+    GmaPrint("Iris channel function:")
+    GmaPrint("From: " .. iris.from .. " To: " .. iris.to);
+    GmaPrint("From phys: " .. iris.from_phys .. " To phys: " .. iris.to_phys);
 end
 
 -- Get fixture type infos
@@ -865,19 +1054,31 @@ end
 --         to = 255,
 --         from_phys = 0,
 --         to_phys = 100
---     }
+--     },
+--     iris = {
+--         from = 1,
+--         to = 75,
+--         from_phys = 0.11,
+--         to_phys = 1
+--    }
 -- }
 local function GetFixtureTypeInfo(fixture_type_handle)
     local fixture_type_id = tonumber(GmaShowPropertyValue(fixture_type_handle, FIXTURETYPE_PROPERTIES.NO));
     local name = GmaShowPropertyValue(fixture_type_handle, FIXTURETYPE_PROPERTIES.LONG_NAME);
-    local zoom_values = GetZoomChannelFunctionForFixtureType(fixture_type_handle);
+    local zoom = GetZoomChannelFunctionForFixtureType(fixture_type_handle);
+    local iris = GetIrisChannelFunctionForFixtureType(fixture_type_handle);
 
     local info = {
         fixture_type_id = fixture_type_id,
         name = name,
     };
-    if zoom_values ~= nil then
-        info.zoom = zoom_values;
+
+    if zoom ~= nil then
+        info.zoom = zoom;
+    end
+
+    if iris ~= nil then
+        info.iris = iris;
     end
 
     return info
@@ -889,7 +1090,7 @@ end
 --
 -- return table the fixture type infos with the following structure:
 -- {
---     [1] = {
+--     [fixture_type_id] = {
 --         fixture_type_id = 1,
 --         zoom = {
 --             from = 0,
@@ -897,10 +1098,18 @@ end
 --             from_phys = 0,
 --             to_phys = 100
 --         },
+--         iris = {
+--             from = 1,
+--             to = 75,
+--             from_phys = 0.11,
+--             to_phys = 1
+--         }
+--     },
 --     [...] = {
 --         ...
 --         },
 --     },
+-- }
 local function GetFixtureTypeInfos(fixture_types_handle)
     local infos = {};
     local fixture_types_amount = GmaShowGetObjAmount(fixture_types_handle);
@@ -938,10 +1147,19 @@ function AZ.TestGetFixtureTypeInfos()
                 GmaPrint("Zoom from phys: " .. info.zoom.from_phys .. " to phys: " .. info.zoom.to_phys);
             end
         end
+
+        if info.iris == nil then
+            GmaPrint("No iris channel function");
+        else
+            GmaPrint("Iris from: " .. info.iris.from .. " to: " .. info.iris.to);
+            if info.iris.to_phys == nil then
+                GmaPrint("No iris physical values");
+            else
+                GmaPrint("Iris from phys: " .. info.iris.from_phys .. " to phys: " .. info.iris.to_phys);
+            end
+        end
     end
 end
-
-local g_fixture_types_info = {};
 
 -- Update the fixture positions info cache.
 -- This function should be called when the fixture positions change
@@ -953,6 +1171,49 @@ function AZ.UpdateFixtureTypeInfo()
     local fixture_types_handle = GetFixtureTypesHandle();
     local infos = GetFixtureTypeInfos(fixture_types_handle);
     g_fixture_types_info = infos;
+
+    if SETTINGS.VERBOSE then
+        GmaPrint("Fixture types info updated");
+        for fixture_type_id, fixture_type in pairs(infos) do
+            GmaPrint("");
+            GmaPrint("Fixture type " .. fixture_type_id .. " (" .. fixture_type.name .. ")" .. ":");
+            if fixture_type.zoom == nil then
+                GmaPrint("No zoom channel function");
+            else
+                GmaPrint("Zoom from: " .. fixture_type.zoom.from .. " to: " .. fixture_type.zoom.to);
+                if fixture_type.zoom.to_phys == nil then
+                    GmaPrint("No zoom physical values");
+                else
+                    GmaPrint("Zoom from phys: " ..
+                        fixture_type.zoom.from_phys .. " to phys: " .. fixture_type.zoom.to_phys);
+                end
+            end
+        end
+    end
+end
+
+local function SetFixtureAttributeProgrammer(fixture_id, attribute, value)
+    GmaCmd("Fixture " .. fixture_id .. " Attribute \"" .. attribute .. "\" At " .. value);
+end
+
+local function OffFixtureAttributeProgrammer(fixture_id, attribute)
+    SetFixtureAttributeProgrammer(fixture_id, attribute, "\"Off\"");
+end
+
+local function EnableFixtureProgrammer(fixture_id, marker_id)
+    SetFixtureAttributeProgrammer(fixture_id, "MARK", marker_id);
+    SetFixtureAttributeProgrammer(fixture_id, "STAGEX", 0);
+    SetFixtureAttributeProgrammer(fixture_id, "STAGEY", 0);
+    SetFixtureAttributeProgrammer(fixture_id, "STAGEZ", 0);
+end
+
+local function DisableFixtureProgrammer(fixture_id)
+    OffFixtureAttributeProgrammer(fixture_id, "MARK");
+    OffFixtureAttributeProgrammer(fixture_id, "STAGEX");
+    OffFixtureAttributeProgrammer(fixture_id, "STAGEY");
+    OffFixtureAttributeProgrammer(fixture_id, "STAGEZ");
+    OffFixtureAttributeProgrammer(fixture_id, "ZOOM");
+    OffFixtureAttributeProgrammer(fixture_id, "IRIS");
 end
 
 -- ------------------------------------------------------------------------------
@@ -1043,26 +1304,135 @@ end
 -- Runtime Functions
 -- ------------------------------------------------------------------------------
 
-local enabled = false;
 local RegisterUpdateLoop
 
--- Called at fix refresh rate, configured in settings
-local function UpdateLoop()
-    if not enabled then
+function UpdateFixtureProgrammer(fixture, beam_angle_deg, fixture_type_info)
+    local zoom = Remap(beam_angle_deg, fixture_type_info.zoom.from_phys, fixture_type_info.zoom.to_phys,
+        fixture_type_info.zoom.from, fixture_type_info.zoom.to);
+    local zoom = Clamp(zoom, fixture_type_info.zoom.from, fixture_type_info.zoom.to);
+    SetFixtureAttributeProgrammer(fixture.fixture_id, "ZOOM", zoom);
+
+    local min_phys_zoom = math.min(fixture_type_info.zoom.from_phys, fixture_type_info.zoom.to_phys);
+    if SETTINGS.USE_IRIS and fixture_type_info.iris then
+        if beam_angle_deg < min_phys_zoom then
+            local min_phys_iris = math.min(fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys);
+            local max_phys_iris = math.max(fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys);
+
+            local iris_level = Remap(beam_angle_deg, 0, min_phys_zoom, min_phys_iris, max_phys_iris);
+            local iris = Remap(iris_level, fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys,
+                fixture_type_info.iris.from, fixture_type_info.iris.to);
+            local iris = Clamp(iris, fixture_type_info.iris.from, fixture_type_info.iris.to);
+
+            SetFixtureAttributeProgrammer(fixture.fixture_id, "IRIS", iris);
+        else
+            local max_phys_iris = math.max(fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys);
+            local iris = Remap(max_phys_iris, fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys,
+                fixture_type_info.iris.from, fixture_type_info.iris.to)
+            local iris = Clamp(iris, fixture_type_info.iris.from, fixture_type_info.iris.to);
+            SetFixtureAttributeProgrammer(fixture.fixture_id, "IRIS", iris);
+        end
+    end
+end
+
+-- Update the fixture zoom
+-- This function as often as possible
+-- param fixture:table fixture
+-- This is a table with the following keys:
+-- - fixture_id:number fixture id
+-- - marker_id:number marker id
+-- - beam_size:number beam size
+-- param markers:table markers positions
+-- This is a table with the following structure:
+-- {
+--     [marker_id] = {
+--         x = x_position,
+--         y = y_position,
+--         z = z_position,
+--     },
+--     ...
+-- }
+local function UpdateFixture(fixture, markers)
+    local fixture_info = g_fixture_infos[fixture.fixture_id];
+    if fixture_info == nil then
+        GmaPrint("Can't find fixture info for fixture " .. fixture.fixture_id);
         return;
     end
 
+    local fixture_type_info = g_fixture_types_info[fixture_info.fixture_type_id];
+    if fixture_type_info == nil then
+        GmaPrint("Can't find fixture type " .. fixture_info.fixture_type_id .. " info for fixture " .. fixture.fixture_id);
+        return;
+    end
 
-    RegisterUpdateLoop();
+    local marker = markers[fixture.marker_id];
+    if marker == nil then
+        GmaPrint("Can't find marker " .. fixture.marker_id .. " for fixture " .. fixture.fixture_id);
+        return;
+    end
+
+    if fixture_type_info.zoom == nil then
+        GmaPrint("No zoom info for fixture " .. fixture.fixture_id);
+        return;
+    end
+
+    local distance = GetDistanceVector3(fixture_info.position, marker);
+    local beam_radius = fixture.beam_size / 2;
+    local beam_angle_rad = GetBeamAngle(distance, beam_radius);
+    local beam_angle_deg = math.deg(beam_angle_rad);
+
+    if g_mode == PLUGIN_MODE.PROGRAMMER then
+        UpdateFixtureProgrammer(fixture, beam_angle_deg, fixture_type_info);
+    end
+
+end
+
+-- Trick because GmaTimer immediately call the callback
+-- So registering a timer with count 1 will always ignore frequency.
+-- By registering a timer for multiple count, frequency will be respected, except for the first called
+local g_expected_remaining_update = 0;
+local g_global_call_repeat = 10;
+
+-- Called at fix refresh rate, configured in settings
+local function UpdateLoop()
+    g_expected_remaining_update = g_expected_remaining_update - 1;
+    if not g_enabled then
+        return;
+    end
+
+    -- Get the current positions of all markers
+    local markers = GetAllMarkersPosition();
+
+    -- Update zoom for each fixture
+    for _, fixture in pairs(g_fixtures) do
+        UpdateFixture(fixture, markers);
+    end
+
+    if g_expected_remaining_update == 0 then
+        RegisterUpdateLoop();
+    end
 end
 
 local function RegisterUpdateLoopImpl()
-    if not enabled then
+    if not g_enabled then
         GmaPrint("Auto Zoom Plugin is disabled, fail to start update loop");
         return;
     end
 
-    GmaTimer(UpdateLoop, 1 / SETTINGS.REFRESH_RATE, 1)
+    local update_period = 1. / SETTINGS.REFRESH_RATE;
+
+    -- if SETTINGS.VERBOSE then
+    --     GmaPrint("Register update loop with period " .. update_period .. "s");
+    -- end
+
+    if g_expected_remaining_update ~= 0 then
+        GmaPrint("Warning: update loop is already registered, expected remaining update " .. g_expected_remaining_update);
+        return
+    end
+
+    -- Register timer every 10s
+    g_global_call_repeat = SETTINGS.REFRESH_RATE * 10;
+    g_expected_remaining_update = g_global_call_repeat;
+    GmaTimer(UpdateLoop, update_period, g_expected_remaining_update)
 end
 
 RegisterUpdateLoop = RegisterUpdateLoopImpl;
@@ -1071,8 +1441,12 @@ RegisterUpdateLoop = RegisterUpdateLoopImpl;
 -- You should call this function from a macro:
 -- `LUA "EnableAutoZoomPlugin()"`
 function AZ.Enable()
+    -- Always make sure that plugin is initialized,
+    -- otherwise we won't have fixture and types info
+    AZ.Init();
+
     GmaPrint("Enable Auto Zoom Plugin")
-    enabled = true;
+    g_enabled = true;
     GmaShowSetVar(SETTINGS.ENABLE_VAR, 1);
     RegisterUpdateLoop();
 end
@@ -1082,7 +1456,7 @@ end
 -- `LUA "DisableAutoZoomPlugin()"`
 function AZ.Disable()
     GmaPrint("Disable Auto Zoom Plugin")
-    enabled = false;
+    g_enabled = false;
     GmaShowSetVar(SETTINGS.ENABLE_VAR, 0);
 end
 
@@ -1098,12 +1472,143 @@ local function EnableOrDisableFromEnv()
     end
 end
 
+local function PluginModeFromStr(mode)
+    local mode_lowercase = mode:lower();
+    if mode_lowercase == "Programmer" then
+        return PLUGIN_MODE.PROGRAMMER;
+    end
+
+    return PLUGIN_MODE.PROGRAMMER;
+end
+
+function AZ.SetMode(mode)
+    if mode == nil then
+        GmaPrint("Set Plugin Mode called with no mode, use default mode");
+        mode = "Programmer";
+    end
+    GmaPrint("Set Plugin Mode to " .. mode);
+    GmaShowSetVar(SETTINGS.MODE_VAR, mode);
+    g_mode = PluginModeFromStr(mode);
+end
+
+local function InitModeFromEnv()
+    GmaPrint("Read Mode From Env " .. SETTINGS.MODE_VAR .. " ...");
+    local mode = GmaShowGetVar(SETTINGS.MODE_VAR);
+    AZ.SetMode(mode);
+end
+
+function AZ.EnableFixture(fixture, marker, beam_size)
+    AZ.Init();
+
+    if fixture == nil then
+        GmaPrint("Please provide a valid fixture id to EnableFixture");
+        return;
+    end
+
+    if marker == nil then
+        GmaPrint("Please provide a valid marker id to EnableFixture");
+        return;
+    end
+
+    local beam_size = tonumber(beam_size);
+    if beam_size == nil then
+        GmaPrint("Please provide a valid number beam size to EnableFixture");
+        return;
+    end
+
+    local fixture_handle = GmaShowGetObjHandle("Fixture " .. fixture);
+    if fixture_handle == nil then
+        GmaPrint("Fixture " .. fixture .. " doesn't exist");
+        return;
+    end
+
+    local marker_handle = GmaShowGetObjHandle("Fixture " .. marker);
+    if marker_handle == nil then
+        GmaPrint("Marker " .. marker .. " doesn't exist");
+        return;
+    end
+
+    local fixture_id = GetFixtureId(fixture_handle);
+    local marker_id = GetFixtureId(marker_handle);
+
+    local fixture_info = g_fixture_infos[fixture_id];
+    if fixture_info == nil then
+        GmaPrint("Fixture " .. fixture .. " doesn't exist");
+        return;
+    end
+
+    local fixture_type_info = g_fixture_types_info[fixture_info.fixture_type_id];
+    if fixture_type_info == nil then
+        GmaPrint("Fixture " .. fixture .. " has an invalid fixture type " .. fixture_info.fixture_type_id);
+        return;
+    end
+
+    if fixture_type_info.zoom == nil then
+        GmaPrint("Fixture " .. fixture .. " doesn't support zoom, fail to enable autozoom");
+        return;
+    end
+
+    if fixture_type_info.zoom.from == nil then
+        GmaPrint("Fixture " .. fixture .. " doesn't support zoom from, fail to enable autozoom");
+        return;
+    end
+
+    if fixture_type_info.zoom.to == nil then
+        GmaPrint("Fixture " .. fixture .. " doesn't support zoom to, fail to enable autozoom");
+        return;
+    end
+
+    if fixture_type_info.zoom.from_phys == nil then
+        GmaPrint("Fixture " .. fixture .. " doesn't support zoom from_phys, fail to enable autozoom");
+        return;
+    end
+
+    if fixture_type_info.zoom.to_phys == nil then
+        GmaPrint("Fixture " .. fixture .. " doesn't support zoom to_phys, fail to enable autozoom");
+        return;
+    end
+
+    GmaPrint("Enable Fixture " .. fixture_id .. " to Marker " .. marker_id .. " with beam size " .. beam_size);
+
+    g_fixtures[fixture_id] = {
+        fixture_id = fixture_id,
+        marker_id = marker_id,
+        beam_size = beam_size,
+    };
+
+    if g_mode == PLUGIN_MODE.PROGRAMMER then
+        EnableFixtureProgrammer(fixture_id, marker_id);
+    end
+end
+
+function AZ.DisableFixture(fixture)
+    if fixture == nil then
+        GmaPrint("Please provide a valid fixture id to DisableFixture");
+        return;
+    end
+    GmaPrint("Disable Fixture " .. fixture);
+
+    local fixture_handle = GmaShowGetObjHandle("Fixture " .. fixture);
+    if fixture_handle == nil then
+        GmaPrint("Fixture " .. fixture .. " doesn't exist");
+        return;
+    end
+
+    local fixture_id = GetFixtureId(fixture_handle);
+
+    g_fixtures[fixture_id] = nil;
+
+    if g_mode == PLUGIN_MODE.PROGRAMMER then
+        DisableFixtureProgrammer(fixture);
+    end
+end
+
 function Refresh()
     GmaPrint("Update Fixture Info Cache ...");
-    AZ.UpdateFixturePositionsInfo();
+    AZ.UpdateFixtureInfo();
 
     GmaPrint("Update Fixture Type Info Cache ...");
-    AZ.UpdateFixturePositionsInfo();
+    AZ.UpdateFixtureTypeInfo();
 end
 
 local function Start()
@@ -1111,12 +1616,24 @@ local function Start()
 
     Refresh();
     EnableOrDisableFromEnv();
+    InitModeFromEnv();
 
     GmaPrint("Initialization Complete");
+
+    g_initialized = true;
+end
+
+function AZ.Init()
+    if g_initialized then
+        return;
+    end
+    Start();
 end
 
 local function Cleanup()
-    gma.echo("Stop Auto Zoom Plugin");
+    GmaPrint("Stop Auto Zoom Plugin");
+    g_enabled = false;
+    g_global_call_repeat = 0;
 end
 
 return Start, Cleanup;

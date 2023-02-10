@@ -109,23 +109,23 @@
 
 -- string:type              = gma.gethardwaretype()
 
-local GmaCmd = gma.cmd;
-local GmaTimer = gma.timer;
+local GmaCmd                = gma.cmd;
+local GmaTimer              = gma.timer;
 local GmaShowPropertyAmount = gma.show.property.amount;
-local GmaShowPropertyName = gma.show.property.name;
-local GmaShowPropertyValue = gma.show.property.get;
-local GmaUserGetCmdDest = gma.user.getcmddest;
-local GmaShowGetObjHandle = gma.show.getobj.handle;
-local GmaShowGetObjParent = gma.show.getobj.parent;
-local GmaShowGetObjClass = gma.show.getobj.class;
-local GmaShowGetObjIndex = gma.show.getobj.index;
-local GmaShowGetObjNumber = gma.show.getobj.number;
-local GmaShowGetObjChild = gma.show.getobj.child;
-local GmaShowGetObjAmount = gma.show.getobj.amount;
-local GmaShowGetObjName = gma.show.getobj.name;
-local GmaShowGetObjLabel = gma.show.getobj.label;
-local GmaShowSetVar = gma.show.setvar;
-local GmaShowGetVar = gma.show.getvar;
+local GmaShowPropertyName   = gma.show.property.name;
+local GmaShowPropertyValue  = gma.show.property.get;
+local GmaUserGetCmdDest     = gma.user.getcmddest;
+local GmaShowGetObjHandle   = gma.show.getobj.handle;
+local GmaShowGetObjParent   = gma.show.getobj.parent;
+local GmaShowGetObjClass    = gma.show.getobj.class;
+local GmaShowGetObjIndex    = gma.show.getobj.index;
+local GmaShowGetObjNumber   = gma.show.getobj.number;
+local GmaShowGetObjChild    = gma.show.getobj.child;
+local GmaShowGetObjAmount   = gma.show.getobj.amount;
+local GmaShowGetObjName     = gma.show.getobj.name;
+local GmaShowGetObjLabel    = gma.show.getobj.label;
+local GmaShowSetVar         = gma.show.setvar;
+local GmaShowGetVar         = gma.show.getvar;
 
 -- ------------------------------------------------------------------------------
 -- Constants
@@ -134,13 +134,13 @@ local GmaShowGetVar = gma.show.getvar;
 -- Plugin functions that are expected to be called from macros are prefixed with "AZ."
 -- This is a namespace that stands for "Auto Zoom"
 -- It aims to avoid conflicts with other plugins
-AZ = AZ or {}
+AZ                          = AZ or {}
 
-local PLUGIN_MODE = {
+local PLUGIN_MODE           = {
     PROGRAMMER = 1,
 }
 
-local SETTINGS = {
+local SETTINGS              = {
     PRINT_TO_ECHO = true,
     PRINT_TO_FEEDBACK = true,
     VERBOSE = true,
@@ -149,33 +149,31 @@ local SETTINGS = {
 
     -- User variable to store the enabled state
     ENABLE_VAR = "AUTO_ZOOM_PLUGIN_ENABLED",
-
     -- User variable to store the current mode
     MODE_VAR = "AUTO_ZOOM_PLUGIN_MODE",
-
     -- Enable or disable the use of the Iris for zooming
     USE_IRIS = true,
 }
 
-local INTERNAL_NAME = select(1, ...);
-local VISIBLE_NAME  = select(2, ...);
+local INTERNAL_NAME         = select(1, ...);
+local VISIBLE_NAME          = select(2, ...);
 
-local MAIN_MODULE_ID = 1;
+local MAIN_MODULE_ID        = 1;
 
 -- ------------------------------------------------------------------------------
 -- Variables
 -- ------------------------------------------------------------------------------
 
 -- Set to true when the plugin is initialized with Start()
-local g_initialized = false;
+local g_initialized         = false;
 
 -- Keep if update loop is running
 -- Can be controlled with AZ.Enable() and AZ.Disable()
-local g_enabled = false;
+local g_enabled             = false;
 
 -- Keep track of the current mode for XYZ and zoom tracking
 -- Can be controlled with AZ.SetMode()
-local g_mode = PLUGIN_MODE.PROGRAMMER;
+local g_mode                = PLUGIN_MODE.PROGRAMMER;
 
 -- Table of fixture with active XYZ tracking
 -- {
@@ -186,7 +184,7 @@ local g_mode = PLUGIN_MODE.PROGRAMMER;
 --     },
 --     ...
 -- },
-local g_fixtures = {};
+local g_fixtures            = {};
 
 -- Table of fixture infos, indexed by fixture id
 -- {
@@ -201,7 +199,7 @@ local g_fixtures = {};
 --     },
 --     ...
 -- }
-local g_fixture_infos = {};
+local g_fixture_infos       = {};
 
 -- Table of fixture types infos, indexed by fixture type id
 -- {
@@ -225,7 +223,7 @@ local g_fixture_infos = {};
 --         },
 --     },
 -- }
-local g_fixture_types_info = {};
+local g_fixture_types_info  = {};
 
 -- ------------------------------------------------------------------------------
 -- Utils
@@ -270,7 +268,6 @@ end
 -- param array:table array to convert
 -- return a string with the array elements separated by a space
 local function Array2String(array)
-
     local str = "{";
     for i = 1, #array do
         str = str .. " " .. array[i];
@@ -482,7 +479,6 @@ local FIXTURETYPE_PROPERTIES = {
     XYZ              = 9,
     MODEL            = 10,
     RDM_FIXTURE_TYPE = 11,
-
 }
 
 local CHANNELTYPE_PROPERTIES = {
@@ -548,7 +544,6 @@ local g_root_handle_cached = nil;
 -- get the handle of the root object
 -- return the handle of the root object
 local function GetRootHandle()
-
     if g_root_handle_cached then
         return g_root_handle_cached;
     end
@@ -598,7 +593,7 @@ local function GetHandleFromRoot(path)
         handle = GmaShowGetObjChild(handle, path[i] - 1);
         if handle == nil then
             GmaPrint("Warning: GetHandleFromPath called with invalid path \"" ..
-                Array2String(path) .. "\":" .. type(path),
+            Array2String(path) .. "\":" .. type(path),
                 ", fail to find object at index " .. i .. " which is " .. path[i]);
             return nil;
         end
@@ -620,7 +615,7 @@ function AZ.TestGetHandleFromPath()
             GmaPrint("Found LIVE_SETUP/LAYERS with handle " .. handle);
         else
             GmaPrint("Error: Found LIVE_SETUP/LAYERS with handle " ..
-                handle .. ", but class is " .. GmaShowGetObjClass(handle));
+            handle .. ", but class is " .. GmaShowGetObjClass(handle));
         end
     end
 
@@ -682,7 +677,6 @@ end
 -- - y:number y position
 -- - z:number z position
 local function GetFixturePositionFromSubFixture(fixture_handle)
-
     -- position/rotation is a property of the first child of the fixture
     -- The fixture also has a property pos/rot, but it is always 0 for some reason
     local sub_fixture_handle = GmaShowGetObjChild(fixture_handle, 0);
@@ -812,8 +806,8 @@ function AZ.TestGetAllFixtureInfo()
     GmaPrint("GetAllFixturesPosition takes " .. (end_time - start_time) * 1000 .. " ms");
     for fixture_id, info in pairs(infos) do
         GmaPrint("Fixture " ..
-            fixture_id ..
-            " has position " .. Position2String(info.position) .. ", fixturetype id " .. info.fixture_type_id);
+        fixture_id ..
+        " has position " .. Position2String(info.position) .. ", fixturetype id " .. info.fixture_type_id);
     end
 end
 
@@ -829,8 +823,8 @@ function AZ.UpdateFixtureInfo()
         GmaPrint("Fixture positions cache updated");
         for fixture_id, info in pairs(g_fixture_infos) do
             GmaPrint("Fixture " ..
-                fixture_id ..
-                " has position " .. Position2String(info.position) .. ", fixturetype id " .. info.fixture_type_id);
+            fixture_id ..
+            " has position " .. Position2String(info.position) .. ", fixturetype id " .. info.fixture_type_id);
         end
     end
 end
@@ -1026,7 +1020,6 @@ local function GetIrisChannelFunctionForFixtureType(fixture_type_handle)
 end
 
 function AZ.TestGetIrisChannelFunctionForFixtureType()
-
     local fixture = "Fixture 1";
     local fixture_type_id = GetFixtureTypeIdFromFixtureType(GetFixtureType(GmaShowGetObjHandle(fixture)))
     local fixture_type_handle = GetFixtureTypeHandle(fixture_type_id);
@@ -1185,7 +1178,7 @@ function AZ.UpdateFixtureTypeInfo()
                     GmaPrint("No zoom physical values");
                 else
                     GmaPrint("Zoom from phys: " ..
-                        fixture_type.zoom.from_phys .. " to phys: " .. fixture_type.zoom.to_phys);
+                    fixture_type.zoom.from_phys .. " to phys: " .. fixture_type.zoom.to_phys);
                 end
             end
         end
@@ -1297,7 +1290,6 @@ function AZ.TestGetAllMarkersPosition()
     for marker_id, position in pairs(markers) do
         GmaPrint("Marker " .. marker_id .. " has position " .. Position2String(position));
     end
-
 end
 
 -- ------------------------------------------------------------------------------
@@ -1308,7 +1300,7 @@ local RegisterUpdateLoop
 
 function UpdateFixtureProgrammer(fixture, beam_angle_deg, fixture_type_info)
     local zoom = Remap(beam_angle_deg, fixture_type_info.zoom.from_phys, fixture_type_info.zoom.to_phys,
-        fixture_type_info.zoom.from, fixture_type_info.zoom.to);
+            fixture_type_info.zoom.from, fixture_type_info.zoom.to);
     local zoom = Clamp(zoom, fixture_type_info.zoom.from, fixture_type_info.zoom.to);
     SetFixtureAttributeProgrammer(fixture.fixture_id, "ZOOM", zoom);
 
@@ -1320,14 +1312,14 @@ function UpdateFixtureProgrammer(fixture, beam_angle_deg, fixture_type_info)
 
             local iris_level = Remap(beam_angle_deg, 0, min_phys_zoom, min_phys_iris, max_phys_iris);
             local iris = Remap(iris_level, fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys,
-                fixture_type_info.iris.from, fixture_type_info.iris.to);
+                    fixture_type_info.iris.from, fixture_type_info.iris.to);
             local iris = Clamp(iris, fixture_type_info.iris.from, fixture_type_info.iris.to);
 
             SetFixtureAttributeProgrammer(fixture.fixture_id, "IRIS", iris);
         else
             local max_phys_iris = math.max(fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys);
             local iris = Remap(max_phys_iris, fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys,
-                fixture_type_info.iris.from, fixture_type_info.iris.to)
+                    fixture_type_info.iris.from, fixture_type_info.iris.to)
             local iris = Clamp(iris, fixture_type_info.iris.from, fixture_type_info.iris.to);
             SetFixtureAttributeProgrammer(fixture.fixture_id, "IRIS", iris);
         end
@@ -1360,7 +1352,8 @@ local function UpdateFixture(fixture, markers)
 
     local fixture_type_info = g_fixture_types_info[fixture_info.fixture_type_id];
     if fixture_type_info == nil then
-        GmaPrint("Can't find fixture type " .. fixture_info.fixture_type_id .. " info for fixture " .. fixture.fixture_id);
+        GmaPrint("Can't find fixture type " .. fixture_info.fixture_type_id .. " info for fixture " .. fixture
+        .fixture_id);
         return;
     end
 
@@ -1383,7 +1376,6 @@ local function UpdateFixture(fixture, markers)
     if g_mode == PLUGIN_MODE.PROGRAMMER then
         UpdateFixtureProgrammer(fixture, beam_angle_deg, fixture_type_info);
     end
-
 end
 
 -- Trick because GmaTimer immediately call the callback

@@ -110,6 +110,7 @@
 -- string:type              = gma.gethardwaretype()
 
 local GmaCmd                = gma.cmd;
+local GmaSleep              = gma.sleep;
 local GmaTimer              = gma.timer;
 local GmaShowPropertyAmount = gma.show.property.amount;
 local GmaShowPropertyName   = gma.show.property.name;
@@ -136,23 +137,26 @@ local GmaShowGetVar         = gma.show.getvar;
 -- It aims to avoid conflicts with other plugins
 AZ                          = AZ or {}
 
-local PLUGIN_MODE           = {
+local MODE                  = {
     PROGRAMMER = 1,
+    EXECUTOR   = 2,
 }
 
 local SETTINGS              = {
-    PRINT_TO_ECHO = true,
+    PRINT_TO_ECHO     = true,
     PRINT_TO_FEEDBACK = true,
-    VERBOSE = true,
-    REFRESH_RATE = 30,
-    -- REFRESH_RATE = 1,
-
+    VERBOSE           = true,
+    REFRESH_RATE      = 30,
     -- User variable to store the enabled state
-    ENABLE_VAR = "AUTO_ZOOM_PLUGIN_ENABLED",
+    ENABLE_VAR        = "AUTO_ZOOM_PLUGIN_ENABLED",
     -- User variable to store the current mode
-    MODE_VAR = "AUTO_ZOOM_PLUGIN_MODE",
+    MODE_VAR          = "AUTO_ZOOM_PLUGIN_MODE",
     -- Enable or disable the use of the Iris for zooming
-    USE_IRIS = true,
+    USE_IRIS          = true,
+    -- Prefix for every exec that will control something for the fixture
+    EXEC_PREFIX       = "XYZ",
+    FADER_OFF         = 0,
+    FADER_FULL        = 100,
 }
 
 local INTERNAL_NAME         = select(1, ...);
@@ -173,7 +177,7 @@ local g_enabled             = false;
 
 -- Keep track of the current mode for XYZ and zoom tracking
 -- Can be controlled with AZ.SetMode()
-local g_mode                = PLUGIN_MODE.PROGRAMMER;
+local g_mode                = MODE.EXECUTOR;
 
 -- Table of fixture with active XYZ tracking
 -- {
@@ -533,6 +537,26 @@ local PSNTRACKER_PROPERTIES = {
     ROT_Z   = 8,
     PREDICT = 9,
 }
+
+-- ------------------------------------------------------------------------------
+-- Execs
+-- ------------------------------------------------------------------------------
+
+local function GoExec(exec_name)
+    GmaCmd("Go Exec " .. exec_name);
+end
+
+local function OffExec(exec_name)
+    GmaCmd("Off Exec " .. exec_name);
+end
+
+local function GoExecCue(exec_name, cue_name)
+    GmaCmd("Go Exec " .. exec_name .. " Cue " .. cue_name);
+end
+
+local function ExecAt(exec_name, value)
+    GmaCmd("Exec " .. exec_name .. " At " .. value);
+end
 
 -- ------------------------------------------------------------------------------
 -- Objects methods
@@ -1200,7 +1224,7 @@ local function EnableFixtureProgrammer(fixture_id, marker_id)
     SetFixtureAttributeProgrammer(fixture_id, "STAGEZ", 0);
 end
 
-local function DisableFixtureProgrammer(fixture_id)
+local function DisableFixtureProgrammer(fixture_id, marker_id)
     OffFixtureAttributeProgrammer(fixture_id, "MARK");
     OffFixtureAttributeProgrammer(fixture_id, "STAGEX");
     OffFixtureAttributeProgrammer(fixture_id, "STAGEY");
@@ -1208,6 +1232,37 @@ local function DisableFixtureProgrammer(fixture_id)
     OffFixtureAttributeProgrammer(fixture_id, "ZOOM");
     OffFixtureAttributeProgrammer(fixture_id, "IRIS");
 end
+
+local function GetXYZExecName(fixture_id, marker_id)
+    return "*." .. SETTINGS.EXEC_PREFIX .. "_" .. tostring(fixture_id) .. "_" .. tostring(marker_id);
+end
+
+local function GetXYZZoomExecName(fixture_id)
+    return "*." .. SETTINGS.EXEC_PREFIX .. "_ZOOM_" .. tostring(fixture_id);
+end
+
+local function GetXYZIrisExecName(fixture_id)
+    return "*." .. SETTINGS.EXEC_PREFIX .. "_IRIS_" .. tostring(fixture_id);
+end
+
+local function EnableFixtureExecutor(fixture_id, marker_id)
+    GoExec(GetXYZExecName(fixture_id, marker_id));
+    local zoom_exec = GetXYZZoomExecName(fixture_id);
+    ExecAt(zoom_exec, SETTINGS.FADER_OFF);
+    if SETTINGS.USE_IRIS then
+        local iris_exec = GetXYZIrisExecName(fixture_id);
+        ExecAt(iris_exec, SETTINGS.FADER_OFF);
+    end
+end
+
+local function DisableFixtureExecutor(fixture_id, marker_id)
+    OffExec(GetXYZExecName(fixture_id, marker_id));
+    ExecAt(GetXYZZoomExecName(fixture_id), SETTINGS.FADER_OFF);
+    if SETTINGS.USE_IRIS then
+        ExecAt(GetXYZIrisExecName(fixture_id), SETTINGS.FADER_OFF);
+    end
+end
+
 
 -- ------------------------------------------------------------------------------
 -- Markers methods
@@ -1304,8 +1359,8 @@ function UpdateFixtureProgrammer(fixture, beam_angle_deg, fixture_type_info)
     local zoom = Clamp(zoom, fixture_type_info.zoom.from, fixture_type_info.zoom.to);
     SetFixtureAttributeProgrammer(fixture.fixture_id, "ZOOM", zoom);
 
-    local min_phys_zoom = math.min(fixture_type_info.zoom.from_phys, fixture_type_info.zoom.to_phys);
     if SETTINGS.USE_IRIS and fixture_type_info.iris then
+        local min_phys_zoom = math.min(fixture_type_info.zoom.from_phys, fixture_type_info.zoom.to_phys);
         if beam_angle_deg < min_phys_zoom then
             local min_phys_iris = math.min(fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys);
             local max_phys_iris = math.max(fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys);
@@ -1322,6 +1377,25 @@ function UpdateFixtureProgrammer(fixture, beam_angle_deg, fixture_type_info)
                     fixture_type_info.iris.from, fixture_type_info.iris.to)
             local iris = Clamp(iris, fixture_type_info.iris.from, fixture_type_info.iris.to);
             SetFixtureAttributeProgrammer(fixture.fixture_id, "IRIS", iris);
+        end
+    end
+end
+
+function UpdateFixtureExecutor(fixture, beam_angle_deg, fixture_type_info)
+    local zoom_from_phys = math.min(fixture_type_info.zoom.from_phys, fixture_type_info.zoom.to_phys);
+    local zoom_to_phys = math.max(fixture_type_info.zoom.from_phys, fixture_type_info.zoom.to_phys);
+
+    local zoom = Remap(beam_angle_deg, zoom_from_phys, zoom_to_phys, SETTINGS.FADER_OFF, SETTINGS.FADER_FULL);
+    local zoom = Clamp(zoom, SETTINGS.FADER_OFF, SETTINGS.FADER_FULL);
+    ExecAt(GetXYZZoomExecName(fixture.fixture_id), zoom);
+
+    if SETTINGS.USE_IRIS and fixture_type_info.iris then
+        if beam_angle_deg < zoom_from_phys then
+            local iris = Remap(beam_angle_deg, 0, zoom_from_phys, SETTINGS.FADER_OFF, SETTINGS.FADER_FULL);
+            local iris = Clamp(iris, SETTINGS.FADER_OFF, SETTINGS.FADER_FULL);
+            ExecAt(GetXYZIrisExecName(fixture.fixture_id), iris);
+        else
+            ExecAt(GetXYZIrisExecName(fixture.fixture_id), SETTINGS.FADER_FULL);
         end
     end
 end
@@ -1373,8 +1447,10 @@ local function UpdateFixture(fixture, markers)
     local beam_angle_rad = GetBeamAngle(distance, beam_radius);
     local beam_angle_deg = math.deg(beam_angle_rad);
 
-    if g_mode == PLUGIN_MODE.PROGRAMMER then
+    if g_mode == MODE.PROGRAMMER then
         UpdateFixtureProgrammer(fixture, beam_angle_deg, fixture_type_info);
+    elseif g_mode == MODE.EXECUTOR then
+        UpdateFixtureExecutor(fixture, beam_angle_deg, fixture_type_info);
     end
 end
 
@@ -1452,6 +1528,12 @@ function AZ.Disable()
     GmaShowSetVar(SETTINGS.ENABLE_VAR, 0);
 end
 
+function AZ.ShowEnabled()
+    -- convert g_enabled to str
+    local enabled = tostring(g_enabled);
+    GmaPrint("Show enabled : " .. enabled .. ", $" .. SETTINGS.ENABLE_VAR .. "=" .. GmaShowGetVar(SETTINGS.ENABLE_VAR));
+end
+
 -- Read the environment variable to determine if the plugin is enabled or disabled.
 -- This function is called at startup.
 local function EnableOrDisableFromEnv()
@@ -1464,13 +1546,25 @@ local function EnableOrDisableFromEnv()
     end
 end
 
-local function PluginModeFromStr(mode)
-    local mode_lowercase = mode:lower();
-    if mode_lowercase == "Programmer" then
-        return PLUGIN_MODE.PROGRAMMER;
+local function ModeFromStr(mode)
+    local mode = mode:lower();
+    if mode == "programmer" then
+        return MODE.PROGRAMMER;
+    elseif mode == "exec" or mode == "executor" then
+        return MODE.EXECUTOR;
     end
 
-    return PLUGIN_MODE.PROGRAMMER;
+    return MODE.PROGRAMMER;
+end
+
+local function ModeToStr(mode)
+    if mode == MODE.PROGRAMMER then
+        return "Programmer";
+    elseif mode == MODE.EXECUTOR then
+        return "Executor";
+    end
+
+    return "Programmer";
 end
 
 function AZ.SetMode(mode)
@@ -1478,9 +1572,16 @@ function AZ.SetMode(mode)
         GmaPrint("Set Plugin Mode called with no mode, use default mode");
         mode = "Programmer";
     end
-    GmaPrint("Set Plugin Mode to " .. mode);
+    local parsed_mode = ModeFromStr(mode);
+    GmaPrint("Set Plugin Mode to " .. mode .. "(" .. ModeToStr(parsed_mode) .. ")");
     GmaShowSetVar(SETTINGS.MODE_VAR, mode);
-    g_mode = PluginModeFromStr(mode);
+    g_mode = ModeFromStr(mode);
+end
+
+function AZ.ShowMode()
+    GmaPrint("Plugin Mode is " ..
+    ModeToStr(g_mode) ..
+    " (use AZ.SetMode to change it). $" .. SETTINGS.MODE_VAR .. "=" .. GmaShowGetVar(SETTINGS.MODE_VAR));
 end
 
 local function InitModeFromEnv()
@@ -1560,6 +1661,12 @@ function AZ.EnableFixture(fixture, marker, beam_size)
         return;
     end
 
+
+    if g_fixtures[fixture_id] ~= nil then
+        GmaPrint("Auto disable fixture " .. fixture_id .. " before enabling it again")
+        AZ.DisableFixture(fixture);
+    end
+
     GmaPrint("Enable Fixture " .. fixture_id .. " to Marker " .. marker_id .. " with beam size " .. beam_size);
 
     g_fixtures[fixture_id] = {
@@ -1568,8 +1675,10 @@ function AZ.EnableFixture(fixture, marker, beam_size)
         beam_size = beam_size,
     };
 
-    if g_mode == PLUGIN_MODE.PROGRAMMER then
+    if g_mode == MODE.PROGRAMMER then
         EnableFixtureProgrammer(fixture_id, marker_id);
+    elseif g_mode == MODE.EXECUTOR then
+        EnableFixtureExecutor(fixture_id, marker_id);
     end
 end
 
@@ -1588,10 +1697,19 @@ function AZ.DisableFixture(fixture)
 
     local fixture_id = GetFixtureId(fixture_handle);
 
+    local fixture = g_fixtures[fixture_id];
+    if fixture == nil then
+        return;
+    end
+
+    local marker_id = fixture.marker_id;
+
     g_fixtures[fixture_id] = nil;
 
-    if g_mode == PLUGIN_MODE.PROGRAMMER then
-        DisableFixtureProgrammer(fixture);
+    if g_mode == MODE.PROGRAMMER then
+        DisableFixtureProgrammer(fixture_id, marker_id);
+    elseif g_mode == MODE.EXECUTOR then
+        DisableFixtureExecutor(fixture_id, marker_id);
     end
 end
 

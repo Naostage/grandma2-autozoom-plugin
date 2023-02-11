@@ -36,6 +36,8 @@
 -- OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 -- SOFTWARE.
 
+-- Check README.md for more information and usage
+
 -- ------------------------------------------------------------------------------
 -- GrandMa2 API
 -- ------------------------------------------------------------------------------

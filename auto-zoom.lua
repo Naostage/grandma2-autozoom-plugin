@@ -621,7 +621,7 @@ local function GetHandleFromRoot(path)
         handle = GmaShowGetObjChild(handle, path[i] - 1);
         if handle == nil then
             GmaPrint("Warning: GetHandleFromPath called with invalid path \"" ..
-            Array2String(path) .. "\":" .. type(path),
+                Array2String(path) .. "\":" .. type(path),
                 ", fail to find object at index " .. i .. " which is " .. path[i]);
             return nil;
         end
@@ -643,7 +643,7 @@ function AZ.TestGetHandleFromPath()
             GmaPrint("Found LIVE_SETUP/LAYERS with handle " .. handle);
         else
             GmaPrint("Error: Found LIVE_SETUP/LAYERS with handle " ..
-            handle .. ", but class is " .. GmaShowGetObjClass(handle));
+                handle .. ", but class is " .. GmaShowGetObjClass(handle));
         end
     end
 
@@ -851,8 +851,8 @@ function AZ.UpdateFixtureInfo()
         GmaPrint("Fixture positions cache updated");
         for fixture_id, info in pairs(g_fixture_infos) do
             GmaPrint("Fixture " ..
-            fixture_id ..
-            " has position " .. Position2String(info.position) .. ", fixturetype id " .. info.fixture_type_id);
+                fixture_id ..
+                " has position " .. Position2String(info.position) .. ", fixturetype id " .. info.fixture_type_id);
         end
     end
 end
@@ -1206,7 +1206,7 @@ function AZ.UpdateFixtureTypeInfo()
                     GmaPrint("No zoom physical values");
                 else
                     GmaPrint("Zoom from phys: " ..
-                    fixture_type.zoom.from_phys .. " to phys: " .. fixture_type.zoom.to_phys);
+                        fixture_type.zoom.from_phys .. " to phys: " .. fixture_type.zoom.to_phys);
                 end
             end
         end
@@ -1359,7 +1359,7 @@ local RegisterUpdateLoop
 
 function UpdateFixtureProgrammer(fixture, beam_angle_deg, fixture_type_info)
     local zoom = Remap(beam_angle_deg, fixture_type_info.zoom.from_phys, fixture_type_info.zoom.to_phys,
-            fixture_type_info.zoom.from, fixture_type_info.zoom.to);
+        fixture_type_info.zoom.from, fixture_type_info.zoom.to);
     local zoom = Clamp(zoom, fixture_type_info.zoom.from, fixture_type_info.zoom.to);
     SetFixtureAttributeProgrammer(fixture.fixture_id, "ZOOM", zoom);
 
@@ -1371,14 +1371,14 @@ function UpdateFixtureProgrammer(fixture, beam_angle_deg, fixture_type_info)
 
             local iris_level = Remap(beam_angle_deg, 0, min_phys_zoom, min_phys_iris, max_phys_iris);
             local iris = Remap(iris_level, fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys,
-                    fixture_type_info.iris.from, fixture_type_info.iris.to);
+                fixture_type_info.iris.from, fixture_type_info.iris.to);
             local iris = Clamp(iris, fixture_type_info.iris.from, fixture_type_info.iris.to);
 
             SetFixtureAttributeProgrammer(fixture.fixture_id, "IRIS", iris);
         else
             local max_phys_iris = math.max(fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys);
             local iris = Remap(max_phys_iris, fixture_type_info.iris.from_phys, fixture_type_info.iris.to_phys,
-                    fixture_type_info.iris.from, fixture_type_info.iris.to)
+                fixture_type_info.iris.from, fixture_type_info.iris.to)
             local iris = Clamp(iris, fixture_type_info.iris.from, fixture_type_info.iris.to);
             SetFixtureAttributeProgrammer(fixture.fixture_id, "IRIS", iris);
         end
@@ -1431,7 +1431,7 @@ local function UpdateFixture(fixture, markers)
     local fixture_type_info = g_fixture_types_info[fixture_info.fixture_type_id];
     if fixture_type_info == nil then
         GmaPrint("Can't find fixture type " .. fixture_info.fixture_type_id .. " info for fixture " .. fixture
-        .fixture_id);
+            .fixture_id);
         return;
     end
 
@@ -1543,8 +1543,8 @@ end
 
 function AZ.ShowMode()
     GmaPrint("Plugin Mode is " ..
-    ModeToStr(g_mode) ..
-    " (use AZ.SetMode to change it). $" .. SETTINGS.MODE_VAR .. "=" .. GmaUserGetVar(SETTINGS.MODE_VAR));
+        ModeToStr(g_mode) ..
+        " (use AZ.SetMode to change it). $" .. SETTINGS.MODE_VAR .. "=" .. GmaUserGetVar(SETTINGS.MODE_VAR));
 end
 
 local function InitModeFromEnv()

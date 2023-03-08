@@ -776,9 +776,13 @@ end
 --     fixture_type_id = fixture_type_id,
 --     fixture_id = fixture_id,
 -- }
+-- The value can also be null if the fixture doesn't have a fixture id
 local function GetFixtureInfo(fixture_handle)
     local position = GetFixturePositionFromSubFixture(fixture_handle);
     local fixture_id = GetFixtureId(fixture_handle);
+    if fixture_id == nil then
+        return nil;
+    end
 
     local fixture_type = GetFixtureType(fixture_handle);
     local fixture_type_id = GetFixtureTypeIdFromFixtureType(fixture_type);
@@ -820,7 +824,9 @@ local function GetAllFixturesInfo()
         for j = 0, fixture_amount - 1 do
             local fixture_handle = GmaShowGetObjChild(layer_handle, j);
             local info = GetFixtureInfo(fixture_handle);
-            infos[info.fixture_id] = info;
+            if info ~= nil then
+                infos[info.fixture_id] = info;
+            end
         end
     end
     return infos;

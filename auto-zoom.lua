@@ -840,8 +840,8 @@ function AZ.TestGetAllFixtureInfo()
     GmaPrint("GetAllFixturesPosition takes " .. (end_time - start_time) * 1000 .. " ms");
     for fixture_id, info in pairs(infos) do
         GmaPrint("Fixture " ..
-        fixture_id ..
-        " has position " .. Position2String(info.position) .. ", fixturetype id " .. info.fixture_type_id);
+            fixture_id ..
+            " has position " .. Position2String(info.position) .. ", fixturetype id " .. info.fixture_type_id);
     end
 end
 

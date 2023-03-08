@@ -1755,6 +1755,7 @@ local function Cleanup()
     GmaPrint("Stop Auto Zoom Plugin");
     g_enabled = false;
     g_global_call_repeat = 0;
+    g_expected_remaining_update = 0
 end
 
 return Start, Cleanup;

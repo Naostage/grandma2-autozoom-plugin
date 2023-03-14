@@ -697,6 +697,64 @@ end
 -- Fixture methods
 -- ------------------------------------------------------------------------------
 
+--- Get all fixture ids in a group
+--- @param group string|integer : group number or name of the group
+--- @return table|nil : a list of fixture ids, return nil if the group does not exist or something when wrong
+local function GetFixtureIdsInGroup(group)
+    -- Create a list of int
+    local fixture_ids = {};
+
+    GmaCmd("SelectDrive 1");
+
+    local file_name = "aztemp.xml";
+    local file_path = GmaShowGetVar("PATH") .. "/" .. "importexport" .. "/";
+    local full_path = file_path .. file_name;
+
+    -- Export the group to a file
+    GmaCmd("Export Group " .. group .. " \"" .. file_name .. "\"");
+
+    -- Read the exported file
+    local file_read = io.open(full_path, "r");
+    if file_read == nil then
+        GmaPrint("Could not open file " .. full_path);
+        return nil;
+    end
+
+
+    local file_content = file_read:read("*all");
+    file_read:close();
+
+    -- Remove the temp file
+    os.remove(full_path);
+
+    -- Parse the file (which is XML file)
+    -- We want to match the fix_id in line "<Subfixture fix_id="2003" />"
+    for match in file_content:gmatch("<Subfixture fix_id=\"(%d+)\" />") do
+        local number_match = tonumber(match);
+        if number_match ~= nil then
+            table.insert(fixture_ids, number_match);
+        else
+            GmaPrint("WARNING: Could not convert fix_id " .. match .. " to a number");
+        end
+    end
+
+    return fixture_ids;
+end
+
+function AZ.TestGetFixtureIdsFromGroup(group)
+    GmaPrint("GetFixtureIdsFromGroup " .. group);
+
+    local fixtures = GetFixtureIdsInGroup(group);
+    if fixtures == nil then
+        GmaPrint("Could not get fixture ids from group " .. group);
+        return;
+    else
+        for _, fixture_id in ipairs(fixtures) do
+            GmaPrint("Fixture " .. fixture_id);
+        end
+    end
+end
+
 -- get the fixture transform
 -- param handle:number fixture handle. Can be obtained by gma.show.getobj.handle("Fixture 1")
 -- It the caller responsibility to make sure the handle is valid
@@ -1722,6 +1780,38 @@ function AZ.DisableFixture(fixture)
         DisableFixtureProgrammer(fixture_id, marker_id);
     elseif g_mode == MODE.EXECUTOR then
         DisableFixtureExecutor(fixture_id, marker_id);
+    end
+end
+
+--- Enable tracking for a group of fixtures.
+--- @param group string|number The group name or id.
+--- @param marker string|number The marker name or id.
+--- @param beam_size number The beam size in meters.
+--- @usage AZ.EnableGroup("Group 1", "Stage Marker 1", 1.5)
+function AZ.EnableGroup(group, marker, beam_size)
+    local fixture_ids = GetFixtureIdsInGroup(group);
+    if fixture_ids == nil then
+        GmaPrint("Group " .. group .. " doesn't exist or doesn't contain any fixtures");
+        return;
+    end
+
+    for _, fixture_id in ipairs(fixture_ids) do
+        AZ.EnableFixture(fixture_id, marker, beam_size);
+    end
+end
+
+--- Disable tracking for a group of fixtures.
+--- @param group string|number The group name or id.
+--- @usage AZ.DisableGroup("Group 1")
+function AZ.DisableGroup(group)
+    local fixture_ids = GetFixtureIdsInGroup(group);
+    if fixture_ids == nil then
+        GmaPrint("Group " .. group .. " doesn't exist or doesn't contain any fixtures");
+        return;
+    end
+
+    for _, fixture_id in ipairs(fixture_ids) do
+        AZ.DisableFixture(fixture_id);
     end
 end
 

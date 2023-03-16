@@ -1839,8 +1839,8 @@ local function Start()
     g_initialized = true;
 
     AZ.Refresh();
-    EnableOrDisableFromEnv();
     InitModeFromEnv();
+    EnableOrDisableFromEnv();
 
     GmaPrint("Initialization Complete");
 end

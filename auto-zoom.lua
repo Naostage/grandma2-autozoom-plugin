@@ -147,20 +147,20 @@ local MODE                  = {
 }
 
 local SETTINGS              = {
-    PRINT_TO_ECHO     = true,
-    PRINT_TO_FEEDBACK = true,
-    VERBOSE           = true,
-    REFRESH_RATE      = 30,
+    PRINT_TO_ECHO                  = true,
+    PRINT_TO_FEEDBACK              = true,
+    VERBOSE                        = true,
+    REFRESH_RATE                   = 30,
     -- User variable to store the enabled state
-    ENABLE_VAR        = "AUTO_ZOOM_PLUGIN_ENABLED",
+    ENABLE_VAR                     = "AUTO_ZOOM_PLUGIN_ENABLED",
     -- User variable to store the current mode
-    MODE_VAR          = "AUTO_ZOOM_PLUGIN_MODE",
+    MODE_VAR                       = "AUTO_ZOOM_PLUGIN_MODE",
     -- Enable or disable the use of the Iris for zooming
-    USE_IRIS          = true,
+    USE_IRIS                       = true,
     -- Prefix for every exec that will control something for the fixture
-    EXEC_PREFIX       = "XYZ",
-    FADER_OFF         = 0,
-    FADER_FULL        = 100,
+    EXEC_PREFIX                    = "XYZ",
+    FADER_OFF                      = 0,
+    FADER_FULL                     = 100,
 }
 
 local INTERNAL_NAME         = select(1, ...);

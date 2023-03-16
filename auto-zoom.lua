@@ -1571,7 +1571,7 @@ local function RegisterUpdateLoopImpl()
     --     GmaPrint("Register update loop with period " .. update_period .. "s");
     -- end
 
-    if g_expected_remaining_update ~= 0 then
+    if g_expected_remaining_update > 0 then
         GmaPrint("Warning: update loop is already registered, expected remaining update " .. g_expected_remaining_update);
         return
     end

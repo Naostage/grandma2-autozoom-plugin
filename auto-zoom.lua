@@ -161,6 +161,9 @@ local SETTINGS              = {
     EXEC_PREFIX                    = "XYZ",
     FADER_OFF                      = 0,
     FADER_FULL                     = 100,
+    EXECUTOR_MODE_ENABLE_XYZ_EXEC  = false,
+    EXECUTOR_MODE_ENABLE_ZOOM_EXEC = true,
+    EXECUTOR_MODE_ENABLE_IRIS_EXEC = true,
 }
 
 local INTERNAL_NAME         = select(1, ...);
@@ -1314,19 +1317,27 @@ local function GetXYZIrisExecName(fixture_id)
 end
 
 local function EnableFixtureExecutor(fixture_id, marker_id)
-    GoExec(GetXYZExecName(fixture_id, marker_id));
+    if SETTINGS.EXECUTOR_MODE_ENABLE_XYZ_EXEC then
+        GoExec(GetXYZExecName(fixture_id, marker_id));
+    end
     local zoom_exec = GetXYZZoomExecName(fixture_id);
-    ExecAt(zoom_exec, SETTINGS.FADER_OFF);
-    if SETTINGS.USE_IRIS then
+    if SETTINGS.EXECUTOR_MODE_ENABLE_ZOOM_EXEC then
+        ExecAt(zoom_exec, SETTINGS.FADER_OFF);
+    end
+    if SETTINGS.USE_IRIS and SETTINGS.EXECUTOR_MODE_ENABLE_IRIS_EXEC then
         local iris_exec = GetXYZIrisExecName(fixture_id);
         ExecAt(iris_exec, SETTINGS.FADER_OFF);
     end
 end
 
 local function DisableFixtureExecutor(fixture_id, marker_id)
-    OffExec(GetXYZExecName(fixture_id, marker_id));
-    ExecAt(GetXYZZoomExecName(fixture_id), SETTINGS.FADER_OFF);
-    if SETTINGS.USE_IRIS then
+    if SETTINGS.EXECUTOR_MODE_ENABLE_XYZ_EXEC then
+        OffExec(GetXYZExecName(fixture_id, marker_id));
+    end
+    if SETTINGS.EXECUTOR_MODE_ENABLE_ZOOM_EXEC then
+        ExecAt(GetXYZZoomExecName(fixture_id), SETTINGS.FADER_OFF);
+    end
+    if SETTINGS.USE_IRIS and SETTINGS.EXECUTOR_MODE_ENABLE_IRIS_EXEC then
         ExecAt(GetXYZIrisExecName(fixture_id), SETTINGS.FADER_OFF);
     end
 end

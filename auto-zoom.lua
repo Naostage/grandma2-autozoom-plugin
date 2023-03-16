@@ -1840,7 +1840,7 @@ local function Start()
 
     AZ.Refresh();
     InitModeFromEnv();
-    EnableOrDisableFromEnv();
+    -- EnableOrDisableFromEnv();
 
     GmaPrint("Initialization Complete");
 end

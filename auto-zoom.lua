@@ -1674,7 +1674,7 @@ end
 --- Enable tracking for a fixture
 --- @param fixture string|number Id of the fixture, or the name
 --- @param marker string|number Id of the marker, or the name
---- @param beam_size number Beam size in meters
+--- @param beam_size string|number Beam size in meters or env variable (starting with $)
 function AZ.EnableFixture(fixture, marker, beam_size)
     AZ.Init();
 
@@ -1686,6 +1686,21 @@ function AZ.EnableFixture(fixture, marker, beam_size)
     if marker == nil then
         GmaPrint("Please provide a valid marker id to EnableFixture");
         return;
+    end
+
+    if type(beam_size) == "string" then
+        local is_env_var = beam_size:sub(1, 1) == "$";
+        -- check if beam_size is an env variable
+        if is_env_var then
+            local env_var = beam_size:sub(2);
+            beam_size = GmaShowGetVar(env_var);
+            if beam_size == nil then
+                GmaPrint("Please provide a valid env variable beam size to EnableFixture");
+                return;
+            else
+                GmaPrint("Using beam size from env variable " .. env_var .. " = " .. beam_size);
+            end
+        end
     end
 
     local beam_size = tonumber(beam_size);
@@ -1803,7 +1818,7 @@ end
 --- Enable tracking for a group of fixtures.
 --- @param group string|number The group name or id.
 --- @param marker string|number The marker name or id.
---- @param beam_size number The beam size in meters.
+--- @param beam_size string|number The beam size in meters. Or env variable
 --- @usage AZ.EnableGroup("Group 1", "Stage Marker 1", 1.5)
 function AZ.EnableGroup(group, marker, beam_size)
     local fixture_ids = GetFixtureIdsInGroup(group);

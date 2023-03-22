@@ -1671,6 +1671,10 @@ local function EnableOrDisableFromEnv()
     end
 end
 
+--- Enable tracking for a fixture
+--- @param fixture string|number Id of the fixture, or the name
+--- @param marker string|number Id of the marker, or the name
+--- @param beam_size number Beam size in meters
 function AZ.EnableFixture(fixture, marker, beam_size)
     AZ.Init();
 
@@ -1763,6 +1767,8 @@ function AZ.EnableFixture(fixture, marker, beam_size)
     end
 end
 
+--- Disable tracking for a fixture
+--- @param fixture string|number Id of the fixture, or the name
 function AZ.DisableFixture(fixture)
     if fixture == nil then
         GmaPrint("Please provide a valid fixture id to DisableFixture");

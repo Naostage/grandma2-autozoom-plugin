@@ -1612,19 +1612,19 @@ function AZ.SetMode(mode)
     end
     local parsed_mode = ModeFromStr(mode);
     GmaPrint("Set Plugin Mode to " .. mode .. "(" .. ModeToStr(parsed_mode) .. ")");
-    GmaUserSetVar(SETTINGS.MODE_VAR, mode);
+    GmaShowSetVar(SETTINGS.MODE_VAR, mode);
     g_mode = ModeFromStr(mode);
 end
 
 function AZ.ShowMode()
     GmaPrint("Plugin Mode is " ..
         ModeToStr(g_mode) ..
-        " (use AZ.SetMode to change it). $" .. SETTINGS.MODE_VAR .. "=" .. GmaUserGetVar(SETTINGS.MODE_VAR));
+        " (use AZ.SetMode to change it). $" .. SETTINGS.MODE_VAR .. "=" .. GmaShowGetVar(SETTINGS.MODE_VAR));
 end
 
 local function InitModeFromEnv()
     GmaPrint("Read Mode From Env " .. SETTINGS.MODE_VAR .. " ...");
-    local mode = GmaUserGetVar(SETTINGS.MODE_VAR);
+    local mode = GmaShowGetVar(SETTINGS.MODE_VAR);
     AZ.SetMode(mode);
 end
 
@@ -1639,7 +1639,7 @@ function AZ.Enable()
     end
     GmaPrint("Enable Auto Zoom Plugin")
     g_enabled = true;
-    GmaUserSetVar(SETTINGS.ENABLE_VAR, 1);
+    GmaShowSetVar(SETTINGS.ENABLE_VAR, 1);
     RegisterUpdateLoop();
 end
 
@@ -1649,20 +1649,20 @@ end
 function AZ.Disable()
     GmaPrint("Disable Auto Zoom Plugin")
     g_enabled = false;
-    GmaUserSetVar(SETTINGS.ENABLE_VAR, 0);
+    GmaShowSetVar(SETTINGS.ENABLE_VAR, 0);
 end
 
 function AZ.ShowEnabled()
     -- convert g_enabled to str
     local enabled = tostring(g_enabled);
-    GmaPrint("Show enabled : " .. enabled .. ", $" .. SETTINGS.ENABLE_VAR .. "=" .. GmaUserGetVar(SETTINGS.ENABLE_VAR));
+    GmaPrint("Show enabled : " .. enabled .. ", $" .. SETTINGS.ENABLE_VAR .. "=" .. GmaShowGetVar(SETTINGS.ENABLE_VAR));
 end
 
 -- Read the environment variable to determine if the plugin is enabled or disabled.
 -- This function is called at startup.
 local function EnableOrDisableFromEnv()
     GmaPrint("Read Enabled From Env " .. SETTINGS.ENABLE_VAR .. " ...");
-    local enabled = GmaUserGetVar(SETTINGS.ENABLE_VAR);
+    local enabled = GmaShowGetVar(SETTINGS.ENABLE_VAR);
     GmaPrint("Enabled From Env " .. SETTINGS.ENABLE_VAR .. " = " .. enabled);
     if enabled == "1" then
         AZ.Enable();

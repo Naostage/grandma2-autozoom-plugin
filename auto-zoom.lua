@@ -968,14 +968,16 @@ end
 -- param module_handle:number module handle. The handle can be obtained by calling GetFixtureTypeMainModule
 -- param attribute_name:string the attribute name, e.g. "Pan"
 local function GetModuleChannelTypeHandle(module_handle, attribute_name)
+    GmaPrint("GetModuleChannelTypeHandle: " .. attribute_name);
+
     local ch_amount = GmaShowGetObjAmount(module_handle);
 
     -- loop through all ChannelType until we find the one with the same name as attribute_name
     for i = 0, ch_amount - 1 do
         local channel_type_handle = GmaShowGetObjChild(module_handle, i);
         local attrib_value = GmaShowPropertyValue(channel_type_handle, CHANNELTYPE_PROPERTIES.ATTRIB)
-        -- check if attribute_name is in attrib_value
-        if string.find(attrib_value, attribute_name) then
+
+        if attrib_value == attribute_name then
             return channel_type_handle;
         end
     end
@@ -990,7 +992,7 @@ function AZ.TestGetModuleChannelType()
     local fixture_type_handle = GetFixtureTypeHandle(fixture_type_id);
     local modules_handle = GetFixtureTypeModulesHandle(fixture_type_handle);
     local module_handle = GetFixtureTypeModuleHandle(modules_handle, MAIN_MODULE_ID);
-    local channel_type_handle = GetModuleChannelTypeHandle(module_handle, "Zoom");
+    local channel_type_handle = GetModuleChannelTypeHandle(module_handle, "ZOOM (Zoom)");
     if channel_type_handle == nil then
         GmaPrint("Can't find channel type handle for attribute " .. attrib);
     else
@@ -1038,9 +1040,11 @@ local function GetFromToAndPhysFromChannelFunction(channel_function_handle)
 end
 
 local function GetZoomChannelFunctionForModule(module_handle)
-    local channel_type_handle = GetModuleChannelTypeHandle(module_handle, "Zoom");
+    GmaPrint("GetZoomChannelFunctionForModule");
+    local channel_type_name = "ZOOM (Zoom)";
+    local channel_type_handle = GetModuleChannelTypeHandle(module_handle, channel_type_name);
     if channel_type_handle == nil then
-        GmaPrint("Can't find channel type handle for attribute Zoom");
+        GmaPrint("Can't find channel type handle for attribute \"" .. channel_type_name .. "\"");
         return nil;
     end
 
@@ -1055,13 +1059,13 @@ end
 local function GetZoomChannelFunctionForFixtureType(fixture_type_handle)
     local modules_handle = GetFixtureTypeModulesHandle(fixture_type_handle);
     if modules_handle == nil then
-        GmaPrint("Can't find modules handle");
+        GmaPrint("Can't find modules handle, fail to get zoom channel function");
         return nil;
     end
 
     local module_handle = GetFixtureTypeModuleHandle(modules_handle, MAIN_MODULE_ID);
     if module_handle == nil then
-        GmaPrint("No main module found");
+        GmaPrint("No main module found, fail to get zoom channel function");
         return nil;
     end
 
@@ -1084,9 +1088,10 @@ function AZ.TestGetZoomChannelFunctionForFixtureType()
 end
 
 local function GetIrisChannelFunctionForModule(module_handle)
-    local channel_type_handle = GetModuleChannelTypeHandle(module_handle, "Iris");
+    local attribute_name = "IRIS (Iris)"
+    local channel_type_handle = GetModuleChannelTypeHandle(module_handle, attribute_name);
     if channel_type_handle == nil then
-        GmaPrint("Can't find channel type handle for attribute Iris");
+        GmaPrint("Can't find channel type handle for attribute Iris with name \"" .. attribute_name .. "\"");
         return nil;
     end
 
@@ -1153,6 +1158,8 @@ end
 local function GetFixtureTypeInfo(fixture_type_handle)
     local fixture_type_id = tonumber(GmaShowPropertyValue(fixture_type_handle, FIXTURETYPE_PROPERTIES.NO));
     local name = GmaShowPropertyValue(fixture_type_handle, FIXTURETYPE_PROPERTIES.LONG_NAME);
+    GmaPrint("GetFixtureTypeInfo: " .. name .. " (" .. fixture_type_id .. ")");
+
     local zoom = GetZoomChannelFunctionForFixtureType(fixture_type_handle);
     local iris = GetIrisChannelFunctionForFixtureType(fixture_type_handle);
 
